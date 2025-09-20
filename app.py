@@ -595,7 +595,62 @@ def main():
     if nlp is None:
         return
     
-    st.sidebar.header("⚙️ 設定")
+    st.sidebar.header("⚙️ 分析設定")
+    
+    # 列選択
+    st.sidebar.subheader("📝 分析対象列の選択")
+    
+    # 全列から選択可能にする
+    all_columns = list(df.columns)
+    
+    # デフォルトで'text'列を選択（存在する場合）
+    default_index = 0
+    if 'text' in all_columns:
+        default_index = all_columns.index('text')
+    
+    selected_text_column = st.sidebar.selectbox(
+        "分析対象の列を選択",
+        all_columns,
+        index=default_index,
+        help="テキスト分析を行う列を選択してください。どの列でも選択可能です。"
+    )
+    
+    # 選択された列の詳細情報を表示
+    st.sidebar.write(f"**選択された列:** {selected_text_column}")
+    
+    # 選択された列の有効テキスト数を計算
+    non_empty_texts = df[selected_text_column].dropna().astype(str).str.strip()
+    non_empty_texts = non_empty_texts[non_empty_texts != '']
+    st.sidebar.metric("有効テキスト数", len(non_empty_texts))
+    
+    # データ型の確認
+    st.sidebar.write(f"**データ型:** {df[selected_text_column].dtype}")
+    
+    # 文字列に変換するかどうかの確認
+    if df[selected_text_column].dtype != 'object':
+        st.sidebar.info("ℹ️ この列は文字列型ではありませんが、テキスト分析のために文字列に変換されます。")
+    
+    # 複数列分析のオプション
+    st.sidebar.write("---")
+    st.sidebar.write("🔗 **複数列分析オプション:**")
+    use_multiple_columns = st.sidebar.checkbox(
+        "複数の列を結合して分析する",
+        value=False,
+        help="チェックすると、選択した列と他の列を結合して分析します"
+    )
+    
+    if use_multiple_columns:
+        additional_columns = st.sidebar.multiselect(
+            "追加する列を選択",
+            [col for col in df.columns if col != selected_text_column],
+            help="選択した列と結合して分析する列を選択してください"
+        )
+        
+        if additional_columns:
+            st.sidebar.write(f"**分析対象:** {selected_text_column} + {', '.join(additional_columns)}")
+        else:
+            st.sidebar.warning("追加する列を選択してください。")
+            use_multiple_columns = False
     
     # データ表示
     st.subheader("📋 データ概要")
@@ -616,52 +671,20 @@ def main():
         st.caption(f"列名: {', '.join(df.columns.tolist())}")
     
     with col3:
-        # テキスト列の選択（より柔軟な検出）
-        text_columns = []
-        for col in df.columns:
-            # 文字列型または数値型でも文字列として扱える列を検出
-            if (df[col].dtype == 'object' or 
-                (df[col].dtype in ['int64', 'float64'] and df[col].astype(str).str.len().mean() > 5)):
-                text_columns.append(col)
+        # 全列の情報を表示
+        st.write("📊 **利用可能な列:**")
+        for i, col in enumerate(df.columns, 1):
+            col_type = df[col].dtype
+            non_null_count = df[col].count()
+            st.write(f"{i}. **{col}** ({col_type}) - {non_null_count}件のデータ")
         
-        # 明示的に'text'列がある場合は優先
-        if 'text' in df.columns and 'text' not in text_columns:
-            text_columns.insert(0, 'text')
-        
-        # デバッグ情報を表示
-        st.write(f"🔍 検出された列: {list(df.columns)}")
-        st.write(f"🔍 データ型: {dict(df.dtypes)}")
-        st.write(f"🔍 テキスト列候補: {text_columns}")
-        
-        if text_columns:
-            # デフォルトで'text'列を選択（存在する場合）
-            default_index = 0
-            if 'text' in text_columns:
-                default_index = text_columns.index('text')
-            
-            selected_text_column = st.selectbox(
-                "分析対象のテキスト列を選択",
-                text_columns,
-                index=default_index,
-                help="テキスト分析を行う列を選択してください"
-            )
-            
-            # 選択された列の有効テキスト数を計算
-            non_empty_texts = df[selected_text_column].dropna().astype(str).str.strip()
-            non_empty_texts = non_empty_texts[non_empty_texts != '']
-            st.metric("有効テキスト数", len(non_empty_texts))
-            
-            # 選択された列のサンプルを表示
-            st.write(f"📝 選択された列「{selected_text_column}」のサンプル:")
-            sample_data = df[selected_text_column].dropna().head(3).tolist()
-            for i, text in enumerate(sample_data, 1):
-                st.write(f"  {i}. {str(text)[:50]}...")
-        else:
-            st.warning("テキスト列が見つかりません")
-            st.write("利用可能な列とそのデータ型:")
-            for col in df.columns:
-                st.write(f"  - {col}: {df[col].dtype}")
-            return
+        # 選択された列のサンプルを表示
+        st.write("---")
+        st.write("📋 **選択された列のサンプルデータ:**")
+        sample_data = df[selected_text_column].dropna().head(5).tolist()
+        for i, text in enumerate(sample_data, 1):
+            display_text = str(text)[:80] + "..." if len(str(text)) > 80 else str(text)
+            st.write(f"  {i}. {display_text}")
     
     # データプレビュー
     st.subheader("👀 データプレビュー")
@@ -697,7 +720,26 @@ def main():
     
     # テキスト処理
     if 'selected_text_column' in locals():
-        texts = df[selected_text_column].apply(preprocess_text).tolist()
+        if use_multiple_columns and 'additional_columns' in locals() and additional_columns:
+            # 複数列を結合して処理
+            st.write("🔗 複数列を結合して分析します...")
+            combined_texts = []
+            for _, row in df.iterrows():
+                # 選択された列と追加列を結合
+                text_parts = [str(row[selected_text_column]) if pd.notna(row[selected_text_column]) else ""]
+                for col in additional_columns:
+                    if pd.notna(row[col]):
+                        text_parts.append(str(row[col]))
+                
+                # 結合したテキストを前処理
+                combined_text = " ".join(text_parts)
+                combined_texts.append(preprocess_text(combined_text))
+            
+            texts = combined_texts
+            st.write(f"📊 結合後のテキスト数: {len(texts)}")
+        else:
+            # 単一列を処理
+            texts = df[selected_text_column].apply(preprocess_text).tolist()
         
         with st.spinner("形態素解析を実行中..."):
             # デバッグ情報を表示
