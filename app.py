@@ -41,17 +41,35 @@ def load_spacy_model():
         return None
 
 @st.cache_data
-def load_data():
-    """CSVデータを読み込み"""
+def load_uploaded_data(uploaded_file):
+    """アップロードされたCSVデータを読み込み"""
     try:
-        csv_path = os.path.join(os.path.dirname(__file__), "csv", "data.csv")
-        df = pd.read_csv(csv_path)
-        return df
-    except FileNotFoundError:
-        st.error("CSVファイルが見つかりません。")
-        return None
+        if uploaded_file is not None:
+            # ファイルの拡張子を確認
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+                return df
+            else:
+                st.error("CSVファイルをアップロードしてください。")
+                return None
+        else:
+            return None
     except Exception as e:
         st.error(f"データ読み込みエラー: {e}")
+        return None
+
+@st.cache_data
+def load_default_data():
+    """デフォルトCSVデータを読み込み（フォールバック用）"""
+    try:
+        csv_path = os.path.join(os.path.dirname(__file__), "csv", "data.csv")
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            return df
+        else:
+            return None
+    except Exception as e:
+        st.error(f"デフォルトデータ読み込みエラー: {e}")
         return None
 
 def preprocess_text(text):
@@ -512,9 +530,27 @@ def main():
     # 日本語フォント設定
     font_setup_success = setup_japanese_font()
     
+    # データアップロード
+    st.subheader("📁 データアップロード")
+    
+    # ファイルアップローダー
+    uploaded_file = st.file_uploader(
+        "CSVファイルをアップロードしてください",
+        type=['csv'],
+        help="テキスト分析用のCSVファイルをアップロードしてください。テキスト列を含む必要があります。"
+    )
+    
     # データ読み込み
-    df = load_data()
+    df = None
+    if uploaded_file is not None:
+        df = load_uploaded_data(uploaded_file)
+    else:
+        # デフォルトデータを試行
+        st.info("📋 デフォルトデータを使用します。独自のデータを使用する場合は、上記からCSVファイルをアップロードしてください。")
+        df = load_default_data()
+    
     if df is None:
+        st.error("データを読み込めませんでした。CSVファイルをアップロードするか、デフォルトデータを確認してください。")
         return
     
     # spaCyモデル読み込み
@@ -529,17 +565,41 @@ def main():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("総投稿数", len(df))
+        st.metric("総行数", len(df))
     
     with col2:
         st.metric("総列数", len(df.columns))
         st.caption(f"列名: {', '.join(df.columns.tolist())}")
     
     with col3:
-        if 'text' in df.columns:
-            non_empty_texts = df['text'].dropna().astype(str).str.strip()
+        # テキスト列の選択
+        text_columns = [col for col in df.columns if df[col].dtype == 'object']
+        if text_columns:
+            selected_text_column = st.selectbox(
+                "分析対象のテキスト列を選択",
+                text_columns,
+                help="テキスト分析を行う列を選択してください"
+            )
+            
+            # 選択された列の有効テキスト数を計算
+            non_empty_texts = df[selected_text_column].dropna().astype(str).str.strip()
             non_empty_texts = non_empty_texts[non_empty_texts != '']
             st.metric("有効テキスト数", len(non_empty_texts))
+        else:
+            st.warning("テキスト列が見つかりません")
+            return
+    
+    # データプレビュー
+    st.subheader("👀 データプレビュー")
+    if st.checkbox("データを表示", value=False):
+        st.dataframe(df.head(10), use_container_width=True)
+        
+        # 選択されたテキスト列のサンプル表示
+        if 'selected_text_column' in locals():
+            st.subheader(f"📝 {selected_text_column}列のサンプル")
+            sample_texts = df[selected_text_column].dropna().head(5).tolist()
+            for i, text in enumerate(sample_texts, 1):
+                st.write(f"{i}. {text[:100]}{'...' if len(str(text)) > 100 else ''}")
     
     # 設定パラメータ
     min_freq = st.sidebar.slider("最小出現回数", 1, 10, 2)
@@ -562,8 +622,8 @@ def main():
     selected_pos_tags = [pos_options[pos] for pos in selected_pos]
     
     # テキスト処理
-    if 'text' in df.columns:
-        texts = df['text'].apply(preprocess_text).tolist()
+    if 'selected_text_column' in locals():
+        texts = df[selected_text_column].apply(preprocess_text).tolist()
         
         with st.spinner("形態素解析を実行中..."):
             word_freq, word_pairs = extract_keywords(
@@ -771,7 +831,7 @@ def main():
         else:
             st.warning("分析対象の単語が見つかりませんでした。設定を調整してください。")
     else:
-        st.error("CSVファイルに'text'列が見つかりません。")
+        st.error("テキスト列が選択されていません。")
     
     # フッター
     st.markdown("---")
