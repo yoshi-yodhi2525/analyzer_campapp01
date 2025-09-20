@@ -481,38 +481,65 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
     if not G or len(G.nodes()) == 0:
         return None
     
-    # 日本語フォント設定
+    # 日本語フォント設定（より確実な方法）
     font_prop = None
     try:
+        # まず、利用可能な日本語フォントを検索
+        available_fonts = []
+        try:
+            for font in fm.fontManager.ttflist:
+                font_name = font.name.lower()
+                if any(jp_font in font_name for jp_font in ['noto', 'hiragino', 'yu gothic', 'meiryo', 'ms gothic', 'sans-serif']):
+                    available_fonts.append(font.name)
+        except Exception:
+            pass
+        
+        # フォントファイルが存在する場合は優先
         font_path = FONT_PATH
         if os.path.exists(font_path):
-            # フォントプロパティを作成
-            font_prop = fm.FontProperties(fname=font_path)
-            # matplotlibのデフォルトフォントに設定
-            plt.rcParams['font.family'] = font_prop.get_name()
-            plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け防止
-            st.info(f"日本語フォントを設定しました: {font_prop.get_name()}")
-        else:
-            st.warning(f"フォントファイルが見つかりません: {font_path}")
-            # システムの日本語フォントを探す
             try:
-                # 利用可能な日本語フォントを検索
-                available_fonts = [f.name for f in fm.fontManager.ttflist if 'Noto' in f.name or 'Hiragino' in f.name or 'Yu Gothic' in f.name or 'Meiryo' in f.name]
-                if available_fonts:
-                    plt.rcParams['font.family'] = available_fonts[0]
-                    st.info(f"システムの日本語フォントを使用: {available_fonts[0]}")
-                else:
-                    plt.rcParams['font.family'] = 'DejaVu Sans'
-                    st.warning("日本語フォントが見つかりません。デフォルトフォントを使用します。")
-            except Exception as e2:
+                font_prop = fm.FontProperties(fname=font_path)
+                plt.rcParams['font.family'] = font_prop.get_name()
+                plt.rcParams['axes.unicode_minus'] = False
+                st.success(f"✅ カスタム日本語フォントを設定しました: {font_prop.get_name()}")
+            except Exception as e:
+                st.warning(f"カスタムフォントの読み込みに失敗: {e}")
+                font_prop = None
+        
+        # カスタムフォントが失敗した場合、システムフォントを使用
+        if font_prop is None and available_fonts:
+            try:
+                # 日本語フォントを優先順位で選択
+                preferred_fonts = ['Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'MS Gothic']
+                selected_font = None
+                for preferred in preferred_fonts:
+                    if preferred in available_fonts:
+                        selected_font = preferred
+                        break
+                
+                if not selected_font:
+                    selected_font = available_fonts[0]
+                
+                plt.rcParams['font.family'] = selected_font
+                plt.rcParams['axes.unicode_minus'] = False
+                st.success(f"✅ システム日本語フォントを使用: {selected_font}")
+            except Exception as e:
+                st.warning(f"システムフォントの設定に失敗: {e}")
                 plt.rcParams['font.family'] = 'DejaVu Sans'
-                st.warning(f"フォント検索でエラー: {e2}")
-            plt.rcParams['axes.unicode_minus'] = False
+                plt.rcParams['axes.unicode_minus'] = False
+        elif font_prop is None:
+            # 最後の手段として、matplotlibのデフォルト日本語フォントを試行
+            try:
+                plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
+                plt.rcParams['axes.unicode_minus'] = False
+                st.warning("⚠️ 日本語フォントが見つかりません。デフォルトフォントを使用します。")
+            except Exception as e:
+                st.error(f"フォント設定に完全に失敗: {e}")
+                
     except Exception as e:
-        font_prop = None
+        st.error(f"フォント設定で予期しないエラー: {e}")
         plt.rcParams['font.family'] = 'DejaVu Sans'
         plt.rcParams['axes.unicode_minus'] = False
-        st.warning(f"日本語フォントの設定に失敗しました: {e}")
     
     fig, ax = plt.subplots(figsize=figsize)
     
@@ -695,37 +722,65 @@ def setup_japanese_font():
     """日本語フォントの設定"""
     if not MATPLOTLIB_AVAILABLE:
         return False
+    
+    # フォントキャッシュをクリア（必要に応じて）
+    try:
+        fm._rebuild()
+    except Exception:
+        pass
         
     try:
+        # 利用可能な日本語フォントを検索
+        available_fonts = []
+        try:
+            for font in fm.fontManager.ttflist:
+                font_name = font.name.lower()
+                if any(jp_font in font_name for jp_font in ['noto', 'hiragino', 'yu gothic', 'meiryo', 'ms gothic', 'sans-serif']):
+                    available_fonts.append(font.name)
+        except Exception:
+            pass
+        
+        # フォントファイルが存在する場合は優先
         font_path = FONT_PATH
         if os.path.exists(font_path):
-            font_prop = fm.FontProperties(fname=font_path)
-            plt.rcParams['font.family'] = font_prop.get_name()
-            plt.rcParams['axes.unicode_minus'] = False
-            st.info(f"日本語フォントを設定しました: {font_prop.get_name()}")
-            return True
-        else:
-            st.warning(f"フォントファイルが見つかりません: {font_path}")
-            # システムの日本語フォントを探す
             try:
-                available_fonts = [f.name for f in fm.fontManager.ttflist if 'Noto' in f.name or 'Hiragino' in f.name or 'Yu Gothic' in f.name or 'Meiryo' in f.name]
-                if available_fonts:
-                    plt.rcParams['font.family'] = available_fonts[0]
-                    plt.rcParams['axes.unicode_minus'] = False
-                    st.info(f"システムの日本語フォントを使用: {available_fonts[0]}")
-                    return True
-                else:
-                    plt.rcParams['font.family'] = 'DejaVu Sans'
-                    plt.rcParams['axes.unicode_minus'] = False
-                    st.warning("日本語フォントが見つかりません。デフォルトフォントを使用します。")
-                    return False
-            except Exception as e2:
-                plt.rcParams['font.family'] = 'DejaVu Sans'
+                font_prop = fm.FontProperties(fname=font_path)
+                plt.rcParams['font.family'] = font_prop.get_name()
                 plt.rcParams['axes.unicode_minus'] = False
-                st.warning(f"フォント検索でエラー: {e2}")
-                return False
+                st.success(f"✅ カスタム日本語フォントを設定: {font_prop.get_name()}")
+                return True
+            except Exception as e:
+                st.warning(f"カスタムフォントの読み込みに失敗: {e}")
+        
+        # システムの日本語フォントを使用
+        if available_fonts:
+            try:
+                # 日本語フォントを優先順位で選択
+                preferred_fonts = ['Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'MS Gothic']
+                selected_font = None
+                for preferred in preferred_fonts:
+                    if preferred in available_fonts:
+                        selected_font = preferred
+                        break
+                
+                if not selected_font:
+                    selected_font = available_fonts[0]
+                
+                plt.rcParams['font.family'] = selected_font
+                plt.rcParams['axes.unicode_minus'] = False
+                st.success(f"✅ システム日本語フォントを使用: {selected_font}")
+                return True
+            except Exception as e:
+                st.warning(f"システムフォントの設定に失敗: {e}")
+        
+        # 最後の手段
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'sans-serif']
+        plt.rcParams['axes.unicode_minus'] = False
+        st.warning("⚠️ 日本語フォントが見つかりません。デフォルトフォントを使用します。")
+        return False
+        
     except Exception as e:
-        st.warning(f"日本語フォントの設定に失敗しました: {e}")
+        st.error(f"フォント設定で予期しないエラー: {e}")
         plt.rcParams['font.family'] = 'DejaVu Sans'
         plt.rcParams['axes.unicode_minus'] = False
         return False
