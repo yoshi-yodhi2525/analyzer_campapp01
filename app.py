@@ -64,9 +64,25 @@ def load_default_data():
     try:
         csv_path = os.path.join(os.path.dirname(__file__), "csv", "data.csv")
         if os.path.exists(csv_path):
-            df = pd.read_csv(csv_path)
+            # 複数のエンコーディングを試行
+            encodings = ['utf-8', 'shift_jis', 'cp932', 'utf-8-sig']
+            df = None
+            
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(csv_path, encoding=encoding)
+                    st.write(f"✅ CSVファイルを読み込みました（エンコーディング: {encoding}）")
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if df is None:
+                st.error("CSVファイルのエンコーディングを判別できませんでした。")
+                return None
+                
             return df
         else:
+            st.warning(f"デフォルトデータファイルが見つかりません: {csv_path}")
             return None
     except Exception as e:
         st.error(f"デフォルトデータ読み込みエラー: {e}")
@@ -600,12 +616,33 @@ def main():
         st.caption(f"列名: {', '.join(df.columns.tolist())}")
     
     with col3:
-        # テキスト列の選択
-        text_columns = [col for col in df.columns if df[col].dtype == 'object']
+        # テキスト列の選択（より柔軟な検出）
+        text_columns = []
+        for col in df.columns:
+            # 文字列型または数値型でも文字列として扱える列を検出
+            if (df[col].dtype == 'object' or 
+                (df[col].dtype in ['int64', 'float64'] and df[col].astype(str).str.len().mean() > 5)):
+                text_columns.append(col)
+        
+        # 明示的に'text'列がある場合は優先
+        if 'text' in df.columns and 'text' not in text_columns:
+            text_columns.insert(0, 'text')
+        
+        # デバッグ情報を表示
+        st.write(f"🔍 検出された列: {list(df.columns)}")
+        st.write(f"🔍 データ型: {dict(df.dtypes)}")
+        st.write(f"🔍 テキスト列候補: {text_columns}")
+        
         if text_columns:
+            # デフォルトで'text'列を選択（存在する場合）
+            default_index = 0
+            if 'text' in text_columns:
+                default_index = text_columns.index('text')
+            
             selected_text_column = st.selectbox(
                 "分析対象のテキスト列を選択",
                 text_columns,
+                index=default_index,
                 help="テキスト分析を行う列を選択してください"
             )
             
@@ -613,8 +650,17 @@ def main():
             non_empty_texts = df[selected_text_column].dropna().astype(str).str.strip()
             non_empty_texts = non_empty_texts[non_empty_texts != '']
             st.metric("有効テキスト数", len(non_empty_texts))
+            
+            # 選択された列のサンプルを表示
+            st.write(f"📝 選択された列「{selected_text_column}」のサンプル:")
+            sample_data = df[selected_text_column].dropna().head(3).tolist()
+            for i, text in enumerate(sample_data, 1):
+                st.write(f"  {i}. {str(text)[:50]}...")
         else:
             st.warning("テキスト列が見つかりません")
+            st.write("利用可能な列とそのデータ型:")
+            for col in df.columns:
+                st.write(f"  - {col}: {df[col].dtype}")
             return
     
     # データプレビュー
