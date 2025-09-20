@@ -254,18 +254,22 @@ def plot_network_plotly(G, title="共起ネットワーク"):
     if not G or len(G.nodes()) == 0:
         return None
     
-    # レイアウト計算（エラーハンドリング付き）
+    # レイアウト計算（fruchterman_reingoldレイアウトを使用）
     try:
-        pos = nx.spring_layout(G, k=3, iterations=50)
+        pos = nx.fruchterman_reingold_layout(G, k=3, iterations=50)
     except Exception as e:
-        st.warning(f"springレイアウトでエラーが発生しました: {e}")
+        st.warning(f"fruchterman_reingoldレイアウトでエラーが発生しました: {e}")
         try:
             # 代替レイアウトを試行
-            pos = nx.random_layout(G)
-            st.info("randomレイアウトを使用します。")
+            pos = nx.spring_layout(G, k=3, iterations=50)
+            st.info("springレイアウトを使用します。")
         except Exception as e2:
-            st.error(f"レイアウト計算に失敗しました: {e2}")
-            return None
+            try:
+                pos = nx.random_layout(G)
+                st.info("randomレイアウトを使用します。")
+            except Exception as e3:
+                st.error(f"レイアウト計算に失敗しました: {e3}")
+                return None
     
     # エッジの情報
     edge_x = []
@@ -463,7 +467,7 @@ def plot_network_pyvis(G, title="共起ネットワーク", height="600px", widt
         st.error(f"pyvisネットワーク生成エラー: {e}")
         return None
 
-def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワーク", figsize=(12, 8)):
+def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起ネットワーク", figsize=(12, 8)):
     """Matplotlibでネットワークを可視化"""
     if not MATPLOTLIB_AVAILABLE or not NETWORKX_AVAILABLE:
         st.error("MatplotlibまたはNetworkXが利用できません。")
@@ -489,6 +493,7 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
     
     # レイアウト計算（エラーハンドリング付き）
     layout_functions = {
+        'fruchterman_reingold': nx.fruchterman_reingold_layout,
         'spring': nx.spring_layout,
         'circular': nx.circular_layout,
         'random': nx.random_layout,
@@ -513,7 +518,7 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
         except Exception as e:
             st.warning(f"{layout_type}レイアウトでエラーが発生しました。代替レイアウトを試行します。")
             # 代替レイアウトを順番に試行
-            fallback_layouts = ['random', 'circular', 'spring']
+            fallback_layouts = ['spring', 'random', 'circular']
             for fallback_layout in fallback_layouts:
                 try:
                     pos = layout_functions[fallback_layout](G)
@@ -526,16 +531,19 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
                 st.error("すべてのレイアウトでエラーが発生しました。")
                 return None
     else:
-        # デフォルトはspringレイアウト
+        # デフォルトはfruchterman_reingoldレイアウト
         try:
-            pos = nx.spring_layout(G)
+            pos = nx.fruchterman_reingold_layout(G)
         except Exception as e:
-            st.warning(f"springレイアウトでエラーが発生しました。randomレイアウトを使用します。")
+            st.warning(f"fruchterman_reingoldレイアウトでエラーが発生しました。springレイアウトを使用します。")
             try:
-                pos = nx.random_layout(G)
+                pos = nx.spring_layout(G)
             except Exception as e2:
-                st.error("レイアウト計算に失敗しました。")
-                return None
+                try:
+                    pos = nx.random_layout(G)
+                except Exception as e3:
+                    st.error("レイアウト計算に失敗しました。")
+                    return None
     
     # ノードサイズと色を計算
     node_sizes = []
@@ -587,6 +595,7 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
     
     # レイアウト情報を表示
     layout_info = {
+        'fruchterman_reingold': 'Fruchterman-Reingold Layout (推奨)',
         'spring': 'Spring Layout (バネモデル)',
         'circular': 'Circular Layout (円形)',
         'random': 'Random Layout (ランダム)',
@@ -969,6 +978,7 @@ def main():
                     else:  # Matplotlib
                         # レイアウト選択
                         layout_options = {
+                            'Fruchterman-Reingold Layout (推奨)': 'fruchterman_reingold',
                             'Spring Layout (バネモデル)': 'spring',
                             'Circular Layout (円形)': 'circular',
                             'Random Layout (ランダム)': 'random',
