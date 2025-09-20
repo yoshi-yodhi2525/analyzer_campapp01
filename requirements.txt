@@ -10,3 +10,4 @@ pillow>=10.0.0
 jaconv>=0.3.4
 pyvis>=0.3.2
 ja-ginza
+kaleido>=0.2.1

@@ -4,20 +4,45 @@ import numpy as np
 import spacy
 import ginza
 from wordcloud import WordCloud
-import plotly.graph_objects as go
-import plotly.express as px
-import networkx as nx
 from collections import Counter, defaultdict
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 from PIL import Image
 import io
 import base64
 import jaconv
 import re
-from pyvis.network import Network
 import tempfile
 import os
+
+# オプショナルなライブラリのインポート
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    st.warning("Plotlyが利用できません。Plotly関連の機能は無効になります。")
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.font_manager as fm
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    st.warning("Matplotlibが利用できません。Matplotlib関連の機能は無効になります。")
+
+try:
+    import networkx as nx
+    NETWORKX_AVAILABLE = True
+except ImportError:
+    NETWORKX_AVAILABLE = False
+    st.warning("NetworkXが利用できません。ネットワーク分析機能は無効になります。")
+
+try:
+    from pyvis.network import Network
+    PYVIS_AVAILABLE = True
+except ImportError:
+    PYVIS_AVAILABLE = False
+    st.warning("pyvisが利用できません。pyvisネットワーク可視化機能は無効になります。")
 
 # ページ設定
 st.set_page_config(
@@ -199,6 +224,10 @@ def create_wordcloud(word_freq, font_path):
 
 def create_cooccurrence_network(word_pairs, word_freq, min_freq=2):
     """共起ネットワークを作成"""
+    if not NETWORKX_AVAILABLE:
+        st.error("NetworkXが利用できません。")
+        return None
+    
     if not word_pairs:
         return None
     
@@ -218,6 +247,10 @@ def create_cooccurrence_network(word_pairs, word_freq, min_freq=2):
 
 def plot_network_plotly(G, title="共起ネットワーク"):
     """Plotlyでネットワークを可視化"""
+    if not PLOTLY_AVAILABLE:
+        st.error("Plotlyが利用できません。")
+        return None
+    
     if not G or len(G.nodes()) == 0:
         return None
     
@@ -338,6 +371,10 @@ def plot_network_plotly(G, title="共起ネットワーク"):
 
 def plot_network_pyvis(G, title="共起ネットワーク", height="600px", width="100%"):
     """pyvisでネットワークを可視化"""
+    if not PYVIS_AVAILABLE:
+        st.error("pyvisが利用できません。")
+        return None
+    
     if not G or len(G.nodes()) == 0:
         return None
     
@@ -418,6 +455,10 @@ def plot_network_pyvis(G, title="共起ネットワーク", height="600px", widt
 
 def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワーク", figsize=(12, 8)):
     """Matplotlibでネットワークを可視化"""
+    if not MATPLOTLIB_AVAILABLE or not NETWORKX_AVAILABLE:
+        st.error("MatplotlibまたはNetworkXが利用できません。")
+        return None
+    
     if not G or len(G.nodes()) == 0:
         return None
     
@@ -535,6 +576,9 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
 
 def setup_japanese_font():
     """日本語フォントの設定"""
+    if not MATPLOTLIB_AVAILABLE:
+        return False
+        
     try:
         font_path = FONT_PATH
         if os.path.exists(font_path):
@@ -778,23 +822,27 @@ def main():
                 
                 # ワードクラウド生成
                 wordcloud = create_wordcloud(word_freq, FONT_PATH)
-                if wordcloud:
+                if wordcloud and MATPLOTLIB_AVAILABLE:
                     fig_wc, ax_wc = plt.subplots(figsize=(10, 5))
                     ax_wc.imshow(wordcloud, interpolation='bilinear')
                     ax_wc.axis('off')
                     st.pyplot(fig_wc)
+                elif wordcloud:
+                    # Matplotlibが利用できない場合は画像として表示
+                    st.image(wordcloud.to_array(), caption="ワードクラウド", use_column_width=True)
                     
-                    # ダウンロードボタン
-                    img_buffer = io.BytesIO()
-                    plt.savefig(img_buffer, format='png', bbox_inches='tight', dpi=300)
-                    img_buffer.seek(0)
-                    
-                    st.download_button(
-                        label="ワードクラウドをダウンロード",
-                        data=img_buffer.getvalue(),
-                        file_name="wordcloud.png",
-                        mime="image/png"
-                    )
+                    # ダウンロードボタン（Matplotlibが利用可能な場合のみ）
+                    if MATPLOTLIB_AVAILABLE:
+                        img_buffer = io.BytesIO()
+                        plt.savefig(img_buffer, format='png', bbox_inches='tight', dpi=300)
+                        img_buffer.seek(0)
+                        
+                        st.download_button(
+                            label="ワードクラウドをダウンロード",
+                            data=img_buffer.getvalue(),
+                            file_name="wordcloud.png",
+                            mime="image/png"
+                        )
                 else:
                     st.warning("ワードクラウドを生成できませんでした。")
             
@@ -813,10 +861,22 @@ def main():
             if word_pairs:
                 G = create_cooccurrence_network(word_pairs, word_freq, min_freq)
                 if G and len(G.nodes()) > 0:
-                    # 可視化方法を選択
+                    # 可視化方法を選択（利用可能なライブラリのみ）
+                    available_viz_options = []
+                    if PYVIS_AVAILABLE:
+                        available_viz_options.append("pyvis (高度なインタラクティブ)")
+                    if PLOTLY_AVAILABLE:
+                        available_viz_options.append("Plotly (インタラクティブ)")
+                    if MATPLOTLIB_AVAILABLE and NETWORKX_AVAILABLE:
+                        available_viz_options.append("Matplotlib (静的)")
+                    
+                    if not available_viz_options:
+                        st.error("利用可能な可視化ライブラリがありません。")
+                        return
+                    
                     viz_type = st.radio(
                         "可視化方法を選択",
-                        ["pyvis (高度なインタラクティブ)", "Plotly (インタラクティブ)", "Matplotlib (静的)"],
+                        available_viz_options,
                         horizontal=True
                     )
                     
@@ -923,15 +983,20 @@ def main():
                     with col2:
                         st.metric("エッジ数", len(G.edges()))
                     with col3:
-                        st.metric("密度", f"{nx.density(G):.3f}")
+                        if NETWORKX_AVAILABLE:
+                            st.metric("密度", f"{nx.density(G):.3f}")
+                        else:
+                            st.metric("密度", "N/A")
                     with col4:
-                        if len(G.nodes()) > 0:
+                        if len(G.nodes()) > 0 and NETWORKX_AVAILABLE:
                             degree_centrality = nx.degree_centrality(G)
                             max_centrality_node = max(degree_centrality, key=degree_centrality.get)
                             st.metric("中心性最大", max_centrality_node)
+                        else:
+                            st.metric("中心性最大", "N/A")
                     
                     # 中心性分析
-                    if len(G.nodes()) > 0:
+                    if len(G.nodes()) > 0 and NETWORKX_AVAILABLE:
                         st.subheader("🎯 中心性分析")
                         
                         # 各種中心性を計算
