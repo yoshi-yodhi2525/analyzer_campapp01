@@ -14,21 +14,20 @@ import tempfile
 import os
 
 # オプショナルなライブラリのインポート
-try:
-    import plotly.graph_objects as go
-    import plotly.express as px
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    st.warning("Plotlyが利用できません。Plotly関連の機能は無効になります。")
 
 try:
     import matplotlib.pyplot as plt
     import matplotlib.font_manager as fm
+    import scipy
     MATPLOTLIB_AVAILABLE = True
-except ImportError:
+    SCIPY_AVAILABLE = True
+except ImportError as e:
     MATPLOTLIB_AVAILABLE = False
-    st.warning("Matplotlibが利用できません。Matplotlib関連の機能は無効になります。")
+    SCIPY_AVAILABLE = False
+    if "scipy" in str(e):
+        st.warning("scipyが利用できません。fruchterman_reingoldレイアウトは使用できません。")
+    else:
+        st.warning("Matplotlibが利用できません。Matplotlib関連の機能は無効になります。")
 
 try:
     import networkx as nx
@@ -252,148 +251,6 @@ def create_cooccurrence_network(word_pairs, word_freq, min_freq=2):
     
     return G
 
-def plot_network_plotly(G, title="共起ネットワーク"):
-    """Plotlyでネットワークを可視化"""
-    if not PLOTLY_AVAILABLE:
-        st.error("Plotlyが利用できません。")
-        return None
-    
-    if not G or len(G.nodes()) == 0:
-        return None
-    
-    # レイアウト計算（fruchterman_reingoldレイアウトを使用）
-    try:
-        pos = nx.fruchterman_reingold_layout(G, k=1, iterations=50)
-    except Exception as e:
-        st.warning(f"fruchterman_reingoldレイアウトでエラーが発生しました: {e}")
-        try:
-            # パラメータを調整して再試行
-            pos = nx.fruchterman_reingold_layout(G, k=0.5, iterations=30)
-            st.info("調整されたfruchterman_reingoldレイアウトを使用します。")
-        except Exception as e2:
-            try:
-                # 代替レイアウトを試行
-                pos = nx.spring_layout(G, k=3, iterations=50)
-                st.info("springレイアウトを使用します。")
-            except Exception as e3:
-                try:
-                    pos = nx.random_layout(G)
-                    st.info("randomレイアウトを使用します。")
-                except Exception as e4:
-                    st.error(f"レイアウト計算に失敗しました: {e4}")
-                    return None
-    
-    # エッジの情報
-    edge_x = []
-    edge_y = []
-    edge_info = []
-    
-    for edge in G.edges():
-        x0, y0 = pos[edge[0]]
-        x1, y1 = pos[edge[1]]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
-        
-        weight = G[edge[0]][edge[1]]['weight']
-        edge_info.append(f"{edge[0]} - {edge[1]}<br>共起回数: {weight}")
-    
-    # ノードの情報
-    node_x = []
-    node_y = []
-    node_text = []
-    node_size = []
-    node_color = []
-    
-    for node in G.nodes():
-        x, y = pos[node]
-        node_x.append(x)
-        node_y.append(y)
-        
-        freq = G.nodes[node]['freq']
-        node_text.append(f"{node}<br>出現回数: {freq}")
-        node_size.append(max(10, freq * 2))
-        node_color.append(freq)
-    
-    # エッジのプロット
-    edge_trace = go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=1, color='#888'),
-        hoverinfo='none',
-        mode='lines'
-    )
-    
-    # ノードのプロット
-    node_trace = go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        hoverinfo='text',
-        text=[node for node in G.nodes()],
-        textposition="middle center",
-        hovertext=node_text,
-        # インタラクティブな設定
-        selected=dict(
-            marker=dict(
-                color='red',
-                size=15
-            )
-        ),
-        unselected=dict(
-            marker=dict(
-                opacity=0.8
-            )
-        ),
-        marker=dict(
-            showscale=True,
-            colorscale='Viridis',
-            reversescale=True,
-            color=node_color,
-            size=node_size,
-            colorbar=dict(
-                thickness=15,
-                title="出現回数",
-                xanchor="left"
-            ),
-            line=dict(width=2, color='black'),
-            opacity=1.0
-        )
-    )
-    
-    fig = go.Figure(data=[edge_trace, node_trace],
-                   layout=go.Layout(
-                       title=dict(text=title, font=dict(size=16)),
-                       showlegend=False,
-                       hovermode='closest',
-                       dragmode='pan',  # ドラッグモードを設定
-                       margin=dict(b=20,l=5,r=5,t=40),
-                       annotations=[ dict(
-                           text="ノードサイズは出現回数、色は共起の強さを表します。マウスドラッグで移動、ホイールでズーム可能",
-                           showarrow=False,
-                           xref="paper", yref="paper",
-                           x=0.005, y=-0.002,
-                           xanchor="left", yanchor="bottom",
-                           font=dict(color="gray", size=12)
-                       )],
-                       xaxis=dict(
-                           showgrid=False, 
-                           zeroline=False, 
-                           showticklabels=False,
-                           scaleanchor="y",  # x軸とy軸のスケールを統一
-                           scaleratio=1,
-                           constrain="domain"
-                       ),
-                       yaxis=dict(
-                           showgrid=False, 
-                           zeroline=False, 
-                           showticklabels=False,
-                           constrain="domain"
-                       ),
-                       plot_bgcolor='white',
-                       # インタラクティブな設定
-                       clickmode='event+select',
-                       selectdirection='d'
-                   ))
-    
-    return fig
 
 def plot_network_pyvis(G, title="共起ネットワーク", height="600px", width="100%"):
     """pyvisでネットワークを可視化"""
@@ -665,16 +522,26 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
                 # 平面グラフレイアウトの場合は特別処理
                 pos = nx.planar_layout(G) if nx.is_planar(G) else nx.spring_layout(G)
             elif layout_type == 'fruchterman_reingold':
-                # fruchterman_reingoldレイアウトの特別処理
+                # fruchterman_reingoldレイアウトの特別処理（scipy依存関係チェック）
+                if not SCIPY_AVAILABLE:
+                    st.warning("scipyが利用できません。fruchterman_reingoldレイアウトは使用できません。代替レイアウトを使用します。")
+                    raise Exception("scipy not available")
+                
                 try:
                     pos = nx.fruchterman_reingold_layout(G, k=1, iterations=50)
                 except Exception as e_fr:
+                    if "scipy" in str(e_fr).lower():
+                        st.warning("scipy依存関係エラー: fruchterman_reingoldレイアウトは使用できません。代替レイアウトを使用します。")
+                        raise e_fr
                     st.warning(f"fruchterman_reingoldレイアウトでエラー: {e_fr}")
                     # パラメータを調整して再試行
                     try:
                         pos = nx.fruchterman_reingold_layout(G, k=0.5, iterations=30)
                     except Exception as e_fr2:
-                        st.warning(f"調整後もfruchterman_reingoldレイアウトでエラー: {e_fr2}")
+                        if "scipy" in str(e_fr2).lower():
+                            st.warning("scipy依存関係エラー: fruchterman_reingoldレイアウトは使用できません。代替レイアウトを使用します。")
+                        else:
+                            st.warning(f"調整後もfruchterman_reingoldレイアウトでエラー: {e_fr2}")
                         raise e_fr2
             else:
                 pos = layout_functions[layout_type](G)
@@ -1159,8 +1026,6 @@ def main():
                         available_viz_options.append("Graphviz (高品質・推奨)")
                     if PYVIS_AVAILABLE:
                         available_viz_options.append("pyvis (高度なインタラクティブ)")
-                    if PLOTLY_AVAILABLE:
-                        available_viz_options.append("Plotly (インタラクティブ)")
                     if MATPLOTLIB_AVAILABLE and NETWORKX_AVAILABLE:
                         available_viz_options.append("Matplotlib (静的)")
                     
@@ -1247,13 +1112,6 @@ def main():
                         else:
                             st.warning("pyvisネットワークの可視化に失敗しました。")
                     
-                    elif viz_type == "Plotly (インタラクティブ)":
-                        fig_net = plot_network_plotly(G, "単語の共起ネットワーク")
-                        if fig_net:
-                            st.plotly_chart(fig_net, use_container_width=True)
-                        else:
-                            st.warning("Plotlyネットワークの可視化に失敗しました。")
-                    
                     else:  # Matplotlib
                         # レイアウト選択
                         layout_options = {
@@ -1268,10 +1126,17 @@ def main():
                             'Planar Layout (平面グラフ)': 'planar'
                         }
                         
+                        # scipyが利用できない場合の警告
+                        if not SCIPY_AVAILABLE:
+                            st.warning("⚠️ scipyが利用できません。Fruchterman-Reingold Layoutは使用できません。")
+                        
+                        # scipyが利用できない場合はSpring Layoutをデフォルトに
+                        default_index = 1 if not SCIPY_AVAILABLE else 0
+                        
                         selected_layout = st.selectbox(
                             "レイアウトを選択",
                             options=list(layout_options.keys()),
-                            index=0
+                            index=default_index
                         )
                         
                         layout_type = layout_options[selected_layout]
