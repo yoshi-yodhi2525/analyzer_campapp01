@@ -540,17 +540,24 @@ def main():
         help="テキスト分析用のCSVファイルをアップロードしてください。テキスト列を含む必要があります。"
     )
     
-    # データ読み込み
-    df = None
-    if uploaded_file is not None:
-        df = load_uploaded_data(uploaded_file)
+    # データ読み込み（デフォルトでdata.csvを読み込み）
+    df = load_default_data()
+    
+    if df is not None:
+        st.success("📋 デフォルトデータ（data.csv）を読み込みました。")
+        st.info("💡 独自のデータを使用する場合は、上記からCSVファイルをアップロードしてください。")
     else:
-        # デフォルトデータを試行
-        st.info("📋 デフォルトデータを使用します。独自のデータを使用する場合は、上記からCSVファイルをアップロードしてください。")
-        df = load_default_data()
+        st.warning("⚠️ デフォルトデータが見つかりません。CSVファイルをアップロードしてください。")
+    
+    # アップロードされたファイルがある場合は上書き
+    if uploaded_file is not None:
+        uploaded_df = load_uploaded_data(uploaded_file)
+        if uploaded_df is not None:
+            df = uploaded_df
+            st.success("📁 アップロードされたCSVファイルを読み込みました。")
     
     if df is None:
-        st.error("データを読み込めませんでした。CSVファイルをアップロードするか、デフォルトデータを確認してください。")
+        st.error("データを読み込めませんでした。CSVファイルをアップロードしてください。")
         return
     
     # spaCyモデル読み込み
@@ -562,6 +569,13 @@ def main():
     
     # データ表示
     st.subheader("📋 データ概要")
+    
+    # 現在のデータソースを表示
+    if uploaded_file is not None:
+        st.info(f"📁 現在のデータソース: アップロードファイル「{uploaded_file.name}」")
+    else:
+        st.info("📋 現在のデータソース: デフォルトデータ（data.csv）")
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
