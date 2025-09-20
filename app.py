@@ -477,16 +477,23 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
         return None
     
     # 日本語フォント設定
+    font_prop = None
     try:
         font_path = FONT_PATH
-        # フォントプロパティを作成
-        font_prop = fm.FontProperties(fname=font_path)
-        # matplotlibのデフォルトフォントに設定
-        plt.rcParams['font.family'] = font_prop.get_name()
-        plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け防止
+        if os.path.exists(font_path):
+            # フォントプロパティを作成
+            font_prop = fm.FontProperties(fname=font_path)
+            # matplotlibのデフォルトフォントに設定
+            plt.rcParams['font.family'] = font_prop.get_name()
+            plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け防止
+        else:
+            st.warning(f"フォントファイルが見つかりません: {font_path}")
+            plt.rcParams['font.family'] = 'DejaVu Sans'
+            plt.rcParams['axes.unicode_minus'] = False
     except Exception as e:
         font_prop = None
         plt.rcParams['font.family'] = 'DejaVu Sans'
+        plt.rcParams['axes.unicode_minus'] = False
         st.warning(f"日本語フォントの設定に失敗しました: {e}")
     
     fig, ax = plt.subplots(figsize=figsize)
@@ -572,15 +579,45 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
             ax=ax
         )
         
-        # ノードラベルを描画
-        nx.draw_networkx_labels(
-            G, pos, 
-            labels=node_labels,
-            font_size=8,
-            font_weight='bold',
-            font_properties=font_prop if font_prop else None,
-            ax=ax
-        )
+        # ノードラベルを描画（NetworkXバージョン対応）
+        try:
+            if font_prop is not None:
+                # 日本語フォントが利用可能な場合
+                try:
+                    # 新しいバージョンのNetworkX用
+                    nx.draw_networkx_labels(
+                        G, pos, 
+                        labels=node_labels,
+                        font_size=8,
+                        font_weight='bold',
+                        font_properties=font_prop,
+                        ax=ax
+                    )
+                except TypeError:
+                    # 古いバージョンのNetworkX用（font_properties引数を削除）
+                    nx.draw_networkx_labels(
+                        G, pos, 
+                        labels=node_labels,
+                        font_size=8,
+                        font_weight='bold',
+                        ax=ax
+                    )
+            else:
+                # デフォルトフォントを使用
+                nx.draw_networkx_labels(
+                    G, pos, 
+                    labels=node_labels,
+                    font_size=8,
+                    font_weight='bold',
+                    ax=ax
+                )
+        except Exception as e:
+            st.warning(f"ノードラベルの描画でエラーが発生しました: {e}")
+            # 最小限の描画を試行
+            try:
+                nx.draw_networkx_labels(G, pos, labels=node_labels, ax=ax)
+            except Exception as e2:
+                st.error(f"ノードラベルの描画に完全に失敗しました: {e2}")
     except Exception as e:
         st.error(f"ネットワークの描画でエラーが発生しました: {e}")
         return None
