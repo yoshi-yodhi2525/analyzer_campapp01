@@ -44,6 +44,13 @@ except ImportError:
     PYVIS_AVAILABLE = False
     st.warning("pyvisが利用できません。pyvisネットワーク可視化機能は無効になります。")
 
+try:
+    import pygraphviz as pgv
+    GRAPHVIZ_AVAILABLE = True
+except ImportError:
+    GRAPHVIZ_AVAILABLE = False
+    st.warning("pygraphvizが利用できません。Graphvizネットワーク可視化機能は無効になります。")
+
 # ページ設定
 st.set_page_config(
     page_title="テキスト分析アプリ",
@@ -470,6 +477,85 @@ def plot_network_pyvis(G, title="共起ネットワーク", height="600px", widt
         
     except Exception as e:
         st.error(f"pyvisネットワーク生成エラー: {e}")
+        return None
+
+def plot_network_graphviz(G, title="共起ネットワーク", layout_engine='neato', output_format='png'):
+    """Graphvizでネットワークを可視化"""
+    if not GRAPHVIZ_AVAILABLE or not NETWORKX_AVAILABLE:
+        st.error("GraphvizまたはNetworkXが利用できません。")
+        return None
+    
+    if not G or len(G.nodes()) == 0:
+        return None
+    
+    try:
+        # NetworkXグラフをGraphviz形式に変換
+        A = nx.nx_agraph.to_agraph(G)
+        
+        # グラフの属性を設定
+        A.graph_attr.update(
+            rankdir='TB',  # 上から下へ
+            size='12,8',
+            dpi='300',
+            bgcolor='white',
+            fontname='Noto Sans CJK JP',
+            fontsize='12'
+        )
+        
+        # ノードの属性を設定
+        for node in A.nodes():
+            freq = G.nodes[node]['freq']
+            # ノードサイズを頻度に基づいて調整
+            size = max(0.5, min(3.0, freq * 0.1))
+            # ノードの色を頻度に基づいて設定
+            color_intensity = min(255, freq * 50)
+            color = f"#{color_intensity:02x}{255-color_intensity:02x}64"
+            
+            node.attr.update(
+                fontname='Noto Sans CJK JP',
+                fontsize=str(max(8, min(16, freq * 2))),
+                width=str(size),
+                height=str(size),
+                fillcolor=color,
+                style='filled',
+                shape='circle',
+                label=f"{node}\\n({freq})"
+            )
+        
+        # エッジの属性を設定
+        for edge in A.edges():
+            weight = G[edge[0]][edge[1]]['weight']
+            # エッジの太さを重みに基づいて調整
+            width = max(0.5, min(3.0, weight * 0.5))
+            
+            edge.attr.update(
+                penwidth=str(width),
+                color='gray',
+                arrowsize='0.5'
+            )
+        
+        # レイアウトエンジンを設定
+        layout_engines = {
+            'neato': 'neato',
+            'dot': 'dot',
+            'fdp': 'fdp',
+            'sfdp': 'sfdp',
+            'circo': 'circo',
+            'twopi': 'twopi'
+        }
+        
+        engine = layout_engines.get(layout_engine, 'neato')
+        
+        # レイアウトを計算
+        A.layout(prog=engine)
+        
+        # 画像として出力
+        img_data = A.draw(format=output_format)
+        
+        return img_data
+        
+    except Exception as e:
+        st.error(f"Graphvizネットワーク生成エラー: {e}")
         return None
 
 def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起ネットワーク", figsize=(12, 8)):
@@ -1069,6 +1155,8 @@ def main():
                 if G and len(G.nodes()) > 0:
                     # 可視化方法を選択（利用可能なライブラリのみ）
                     available_viz_options = []
+                    if GRAPHVIZ_AVAILABLE and NETWORKX_AVAILABLE:
+                        available_viz_options.append("Graphviz (高品質・推奨)")
                     if PYVIS_AVAILABLE:
                         available_viz_options.append("pyvis (高度なインタラクティブ)")
                     if PLOTLY_AVAILABLE:
@@ -1086,7 +1174,42 @@ def main():
                         horizontal=True
                     )
                     
-                    if viz_type == "pyvis (高度なインタラクティブ)":
+                    if viz_type == "Graphviz (高品質・推奨)":
+                        # Graphvizネットワークの設定
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            layout_engine = st.selectbox(
+                                "レイアウトエンジン",
+                                ["neato", "dot", "fdp", "sfdp", "circo", "twopi"],
+                                index=0,
+                                help="Graphvizのレイアウトエンジンを選択"
+                            )
+                        with col2:
+                            output_format = st.selectbox(
+                                "出力形式",
+                                ["png", "svg", "pdf"],
+                                index=0,
+                                help="出力画像の形式を選択"
+                            )
+                        
+                        # Graphvizネットワークを生成
+                        with st.spinner("Graphvizネットワークを生成中..."):
+                            img_data = plot_network_graphviz(G, layout_engine=layout_engine, output_format=output_format)
+                        
+                        if img_data:
+                            st.image(img_data, caption=f"共起ネットワーク (Graphviz - {layout_engine})", use_column_width=True)
+                            
+                            # ダウンロードボタン
+                            st.download_button(
+                                label=f"Graphvizネットワークをダウンロード (.{output_format})",
+                                data=img_data,
+                                file_name=f"network_graphviz.{output_format}",
+                                mime=f"image/{output_format}" if output_format != 'pdf' else "application/pdf"
+                            )
+                        else:
+                            st.warning("Graphvizネットワークの可視化に失敗しました。")
+                    
+                    elif viz_type == "pyvis (高度なインタラクティブ)":
                         # pyvisネットワークの設定
                         col1, col2 = st.columns(2)
                         with col1:
