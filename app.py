@@ -256,20 +256,25 @@ def plot_network_plotly(G, title="共起ネットワーク"):
     
     # レイアウト計算（fruchterman_reingoldレイアウトを使用）
     try:
-        pos = nx.fruchterman_reingold_layout(G, k=3, iterations=50)
+        pos = nx.fruchterman_reingold_layout(G, k=1, iterations=50)
     except Exception as e:
         st.warning(f"fruchterman_reingoldレイアウトでエラーが発生しました: {e}")
         try:
-            # 代替レイアウトを試行
-            pos = nx.spring_layout(G, k=3, iterations=50)
-            st.info("springレイアウトを使用します。")
+            # パラメータを調整して再試行
+            pos = nx.fruchterman_reingold_layout(G, k=0.5, iterations=30)
+            st.info("調整されたfruchterman_reingoldレイアウトを使用します。")
         except Exception as e2:
             try:
-                pos = nx.random_layout(G)
-                st.info("randomレイアウトを使用します。")
+                # 代替レイアウトを試行
+                pos = nx.spring_layout(G, k=3, iterations=50)
+                st.info("springレイアウトを使用します。")
             except Exception as e3:
-                st.error(f"レイアウト計算に失敗しました: {e3}")
-                return None
+                try:
+                    pos = nx.random_layout(G)
+                    st.info("randomレイアウトを使用します。")
+                except Exception as e4:
+                    st.error(f"レイアウト計算に失敗しました: {e4}")
+                    return None
     
     # エッジの情報
     edge_x = []
@@ -486,9 +491,22 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
             # matplotlibのデフォルトフォントに設定
             plt.rcParams['font.family'] = font_prop.get_name()
             plt.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け防止
+            st.info(f"日本語フォントを設定しました: {font_prop.get_name()}")
         else:
             st.warning(f"フォントファイルが見つかりません: {font_path}")
-            plt.rcParams['font.family'] = 'DejaVu Sans'
+            # システムの日本語フォントを探す
+            try:
+                # 利用可能な日本語フォントを検索
+                available_fonts = [f.name for f in fm.fontManager.ttflist if 'Noto' in f.name or 'Hiragino' in f.name or 'Yu Gothic' in f.name or 'Meiryo' in f.name]
+                if available_fonts:
+                    plt.rcParams['font.family'] = available_fonts[0]
+                    st.info(f"システムの日本語フォントを使用: {available_fonts[0]}")
+                else:
+                    plt.rcParams['font.family'] = 'DejaVu Sans'
+                    st.warning("日本語フォントが見つかりません。デフォルトフォントを使用します。")
+            except Exception as e2:
+                plt.rcParams['font.family'] = 'DejaVu Sans'
+                st.warning(f"フォント検索でエラー: {e2}")
             plt.rcParams['axes.unicode_minus'] = False
     except Exception as e:
         font_prop = None
@@ -520,6 +538,18 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
             elif layout_type == 'planar':
                 # 平面グラフレイアウトの場合は特別処理
                 pos = nx.planar_layout(G) if nx.is_planar(G) else nx.spring_layout(G)
+            elif layout_type == 'fruchterman_reingold':
+                # fruchterman_reingoldレイアウトの特別処理
+                try:
+                    pos = nx.fruchterman_reingold_layout(G, k=1, iterations=50)
+                except Exception as e_fr:
+                    st.warning(f"fruchterman_reingoldレイアウトでエラー: {e_fr}")
+                    # パラメータを調整して再試行
+                    try:
+                        pos = nx.fruchterman_reingold_layout(G, k=0.5, iterations=30)
+                    except Exception as e_fr2:
+                        st.warning(f"調整後もfruchterman_reingoldレイアウトでエラー: {e_fr2}")
+                        raise e_fr2
             else:
                 pos = layout_functions[layout_type](G)
         except Exception as e:
@@ -540,7 +570,7 @@ def plot_network_matplotlib(G, layout_type='fruchterman_reingold', title="共起
     else:
         # デフォルトはfruchterman_reingoldレイアウト
         try:
-            pos = nx.fruchterman_reingold_layout(G)
+            pos = nx.fruchterman_reingold_layout(G, k=1, iterations=50)
         except Exception as e:
             st.warning(f"fruchterman_reingoldレイアウトでエラーが発生しました。springレイアウトを使用します。")
             try:
@@ -672,12 +702,28 @@ def setup_japanese_font():
             font_prop = fm.FontProperties(fname=font_path)
             plt.rcParams['font.family'] = font_prop.get_name()
             plt.rcParams['axes.unicode_minus'] = False
+            st.info(f"日本語フォントを設定しました: {font_prop.get_name()}")
             return True
         else:
             st.warning(f"フォントファイルが見つかりません: {font_path}")
-            plt.rcParams['font.family'] = 'DejaVu Sans'
-            plt.rcParams['axes.unicode_minus'] = False
-            return False
+            # システムの日本語フォントを探す
+            try:
+                available_fonts = [f.name for f in fm.fontManager.ttflist if 'Noto' in f.name or 'Hiragino' in f.name or 'Yu Gothic' in f.name or 'Meiryo' in f.name]
+                if available_fonts:
+                    plt.rcParams['font.family'] = available_fonts[0]
+                    plt.rcParams['axes.unicode_minus'] = False
+                    st.info(f"システムの日本語フォントを使用: {available_fonts[0]}")
+                    return True
+                else:
+                    plt.rcParams['font.family'] = 'DejaVu Sans'
+                    plt.rcParams['axes.unicode_minus'] = False
+                    st.warning("日本語フォントが見つかりません。デフォルトフォントを使用します。")
+                    return False
+            except Exception as e2:
+                plt.rcParams['font.family'] = 'DejaVu Sans'
+                plt.rcParams['axes.unicode_minus'] = False
+                st.warning(f"フォント検索でエラー: {e2}")
+                return False
     except Exception as e:
         st.warning(f"日本語フォントの設定に失敗しました: {e}")
         plt.rcParams['font.family'] = 'DejaVu Sans'
