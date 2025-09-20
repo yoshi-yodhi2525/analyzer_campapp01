@@ -89,30 +89,42 @@ def extract_keywords(nlp, texts, min_freq=2, pos_tags=['NOUN', 'PROPN', 'ADJ']):
     """形態素解析でキーワードを抽出"""
     all_words = []
     word_pairs = []
+    processed_texts = 0
+    total_tokens = 0
+    filtered_tokens = 0
     
     for text in texts:
         if pd.isna(text) or text.strip() == "":
             continue
             
+        processed_texts += 1
         doc = nlp(text)
         words = []
         
         for token in doc:
+            total_tokens += 1
             # 品詞フィルタリング
             if token.pos_ in pos_tags and not token.is_stop and len(token.text) > 1:
                 # 基本形を使用
                 lemma = token.lemma_.lower()
-                # 数字や記号のみは除外
-                if re.match(r'^[a-zA-Z0-9\W]+$', lemma) or len(lemma) < 2:
-                    continue
-                words.append(lemma)
-                all_words.append(lemma)
+                # 数字や記号のみは除外（日本語文字を含む場合は許可）
+                if not re.match(r'^[a-zA-Z0-9\W]+$', lemma) and len(lemma) >= 2:
+                    words.append(lemma)
+                    all_words.append(lemma)
+                    filtered_tokens += 1
         
         # 共起ペアを抽出（窓幅2）
         for i in range(len(words) - 1):
             for j in range(i + 1, min(i + 3, len(words))):
                 if words[i] != words[j]:
                     word_pairs.append((words[i], words[j]))
+    
+    # デバッグ情報
+    st.write(f"🔧 処理統計:")
+    st.write(f"  - 処理したテキスト数: {processed_texts}")
+    st.write(f"  - 総トークン数: {total_tokens}")
+    st.write(f"  - フィルタリング後トークン数: {filtered_tokens}")
+    st.write(f"  - 抽出前の単語数: {len(all_words)}")
     
     # 頻度フィルタリング
     word_freq = Counter(all_words)
@@ -121,6 +133,8 @@ def extract_keywords(nlp, texts, min_freq=2, pos_tags=['NOUN', 'PROPN', 'ADJ']):
     # 共起ペアの頻度計算
     pair_freq = Counter(word_pairs)
     filtered_pairs = {pair: freq for pair, freq in pair_freq.items() if freq >= min_freq}
+    
+    st.write(f"  - 最小出現回数({min_freq})フィルタリング後: {len(filtered_words)}")
     
     return filtered_words, filtered_pairs
 
@@ -616,7 +630,7 @@ def main():
                 st.write(f"{i}. {text[:100]}{'...' if len(str(text)) > 100 else ''}")
     
     # 設定パラメータ
-    min_freq = st.sidebar.slider("最小出現回数", 1, 10, 2)
+    min_freq = st.sidebar.slider("最小出現回数", 1, 10, 1)
     max_words = st.sidebar.slider("最大単語数", 50, 200, 100)
     
     # 品詞選択
@@ -630,7 +644,7 @@ def main():
     selected_pos = st.sidebar.multiselect(
         "分析対象の品詞",
         options=list(pos_options.keys()),
-        default=['名詞', '固有名詞', '形容詞']
+        default=['名詞', '固有名詞', '形容詞', '動詞']
     )
     
     selected_pos_tags = [pos_options[pos] for pos in selected_pos]
@@ -640,9 +654,30 @@ def main():
         texts = df[selected_text_column].apply(preprocess_text).tolist()
         
         with st.spinner("形態素解析を実行中..."):
+            # デバッグ情報を表示
+            st.write(f"📊 処理対象テキスト数: {len(texts)}")
+            st.write(f"📝 最初の3つのテキストサンプル:")
+            for i, text in enumerate(texts[:3], 1):
+                st.write(f"  {i}. {text[:100]}{'...' if len(text) > 100 else ''}")
+            
             word_freq, word_pairs = extract_keywords(
                 nlp, texts, min_freq, selected_pos_tags
             )
+            
+            # 抽出結果のデバッグ情報
+            st.write(f"🔍 抽出された単語数: {len(word_freq)}")
+            st.write(f"🔗 抽出された共起ペア数: {len(word_pairs)}")
+            
+            if word_freq:
+                st.write("📈 上位10単語:")
+                top_words = dict(Counter(word_freq).most_common(10))
+                for word, freq in top_words.items():
+                    st.write(f"  - {word}: {freq}回")
+            else:
+                st.warning("⚠️ 単語が抽出されませんでした。以下を確認してください：")
+                st.write("- テキストに日本語が含まれているか")
+                st.write("- 最小出現回数の設定が高すぎないか")
+                st.write("- 選択した品詞が適切か")
         
         # 結果表示
         st.subheader("📈 分析結果")
