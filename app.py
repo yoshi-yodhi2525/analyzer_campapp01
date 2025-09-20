@@ -254,8 +254,18 @@ def plot_network_plotly(G, title="共起ネットワーク"):
     if not G or len(G.nodes()) == 0:
         return None
     
-    # レイアウト計算
-    pos = nx.spring_layout(G, k=3, iterations=50)
+    # レイアウト計算（エラーハンドリング付き）
+    try:
+        pos = nx.spring_layout(G, k=3, iterations=50)
+    except Exception as e:
+        st.warning(f"springレイアウトでエラーが発生しました: {e}")
+        try:
+            # 代替レイアウトを試行
+            pos = nx.random_layout(G)
+            st.info("randomレイアウトを使用します。")
+        except Exception as e2:
+            st.error(f"レイアウト計算に失敗しました: {e2}")
+            return None
     
     # エッジの情報
     edge_x = []
@@ -477,7 +487,7 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
     
     fig, ax = plt.subplots(figsize=figsize)
     
-    # レイアウト計算
+    # レイアウト計算（エラーハンドリング付き）
     layout_functions = {
         'spring': nx.spring_layout,
         'circular': nx.circular_layout,
@@ -489,6 +499,7 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
         'planar': nx.planar_layout
     }
     
+    pos = None
     if layout_type in layout_functions:
         try:
             if layout_type == 'bipartite':
@@ -500,10 +511,31 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
             else:
                 pos = layout_functions[layout_type](G)
         except Exception as e:
-            st.warning(f"{layout_type}レイアウトでエラーが発生しました。springレイアウトを使用します。")
-            pos = nx.spring_layout(G)
+            st.warning(f"{layout_type}レイアウトでエラーが発生しました。代替レイアウトを試行します。")
+            # 代替レイアウトを順番に試行
+            fallback_layouts = ['random', 'circular', 'spring']
+            for fallback_layout in fallback_layouts:
+                try:
+                    pos = layout_functions[fallback_layout](G)
+                    st.info(f"{fallback_layout}レイアウトを使用します。")
+                    break
+                except Exception as e2:
+                    continue
+            
+            if pos is None:
+                st.error("すべてのレイアウトでエラーが発生しました。")
+                return None
     else:
-        pos = nx.spring_layout(G)
+        # デフォルトはspringレイアウト
+        try:
+            pos = nx.spring_layout(G)
+        except Exception as e:
+            st.warning(f"springレイアウトでエラーが発生しました。randomレイアウトを使用します。")
+            try:
+                pos = nx.random_layout(G)
+            except Exception as e2:
+                st.error("レイアウト計算に失敗しました。")
+                return None
     
     # ノードサイズと色を計算
     node_sizes = []
@@ -518,28 +550,32 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
         node_colors.append(freq)
         node_labels[node] = node
     
-    # エッジを描画
-    nx.draw_networkx_edges(G, pos, alpha=0.5, edge_color='gray', width=0.5, ax=ax)
-    
-    # ノードを描画
-    nodes = nx.draw_networkx_nodes(
-        G, pos, 
-        node_size=node_sizes,
-        node_color=node_colors,
-        cmap=plt.cm.viridis,
-        alpha=0.8,
-        ax=ax
-    )
-    
-    # ノードラベルを描画
-    nx.draw_networkx_labels(
-        G, pos, 
-        labels=node_labels,
-        font_size=8,
-        font_weight='bold',
-        font_properties=font_prop if font_prop else None,
-        ax=ax
-    )
+    try:
+        # エッジを描画
+        nx.draw_networkx_edges(G, pos, alpha=0.5, edge_color='gray', width=0.5, ax=ax)
+        
+        # ノードを描画
+        nodes = nx.draw_networkx_nodes(
+            G, pos, 
+            node_size=node_sizes,
+            node_color=node_colors,
+            cmap=plt.cm.viridis,
+            alpha=0.8,
+            ax=ax
+        )
+        
+        # ノードラベルを描画
+        nx.draw_networkx_labels(
+            G, pos, 
+            labels=node_labels,
+            font_size=8,
+            font_weight='bold',
+            font_properties=font_prop if font_prop else None,
+            ax=ax
+        )
+    except Exception as e:
+        st.error(f"ネットワークの描画でエラーが発生しました: {e}")
+        return None
     
     # カラーバーを追加
     if nodes:
@@ -566,7 +602,12 @@ def plot_network_matplotlib(G, layout_type='spring', title="共起ネットワ�
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
     
     # ネットワーク統計を表示
-    stats_text = f'ノード数: {len(G.nodes())}\nエッジ数: {len(G.edges())}\n密度: {nx.density(G):.3f}'
+    try:
+        density = nx.density(G) if NETWORKX_AVAILABLE else 0.0
+        stats_text = f'ノード数: {len(G.nodes())}\nエッジ数: {len(G.edges())}\n密度: {density:.3f}'
+    except Exception as e:
+        stats_text = f'ノード数: {len(G.nodes())}\nエッジ数: {len(G.edges())}\n密度: N/A'
+    
     ax.text(0.98, 0.02, stats_text, transform=ax.transAxes, fontsize=10, 
             verticalalignment='bottom', horizontalalignment='right',
             bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.8))
